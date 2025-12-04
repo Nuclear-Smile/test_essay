@@ -63,15 +63,15 @@ def local_parameter_tuning(
     p2,
     cxpb: float,
     mutpb: float,
-    old_revenue: float,
-    old_tc: float,
-    old_util: float,
+    old_obj1: float,
+    old_obj2: float,
+    old_obj3: float,
 ) -> Tuple[float, float, float]:
     p1_stat = 0
     p2_stat = 0
     turnup = 1.1
     turndown = 0.9
-    stat = [old_revenue, old_tc, old_util]
+    stat = [old_obj1, old_obj2, old_obj3]
     for i in range(3):
         if p1.original_objectives[i] < stat[i]:
             p1_stat += 1
@@ -210,23 +210,9 @@ class HealthcareOptimizationProblem:
 
             system.update_patient_metrics_after_moves()
 
-            revenue = self.evaluator.total_revenue()
-            cost1 = self.evaluator.TC_hosp_operation()
-            cost2 = self.evaluator.TC_hosp_referral(2, 150)
-            cost3 = self.evaluator.TC_centre(50, 200, 100.0)
-            cost4 = self.evaluator.TC_doctor_transfer()
-            total_cost = cost1 + cost2 + cost3 + cost4
-            revenue -= total_cost
-
+            load_balance_penalty = self.evaluator.load_balance_penalty()
             tc_inc = self.evaluator.TC_ins()
-            total_utility = self.evaluator.TU_patient(
-                omega_effect=0.4,
-                omega_waiting=1.0,
-                omega_transfer_cost=0.5,
-                omega_treatment_cost=0.5,
-                omega_experience=1.0,
-                omega_admin_cost=0.5,
-            )
+            continuity_penalty = self.evaluator.continuity_and_adherence_penalty()
 
             profits = self.evaluator.calculate_profit_per_node()
             filtered = [
@@ -239,7 +225,7 @@ class HealthcareOptimizationProblem:
             if hasattr(individual, "transfer_events"):
                 individual.transfer_events = self.evaluator.total_transfer_events()
 
-            return [-revenue, tc_inc, -total_utility]
+            return [load_balance_penalty, tc_inc, continuity_penalty]
         finally:
             system.restore_state(snapshot)
 
@@ -505,14 +491,14 @@ class DVG_NSGAIIOptimization:
         print(logbook.stream)
 
         def composite_score(individual: DecisionIndividual):
-            revenue, tc_inc, total_utility = individual.original_objectives
-            return -revenue * tc_inc * total_utility
+            balance_penalty, tc_ins, adherence_penalty = individual.original_objectives
+            return balance_penalty + tc_ins + adherence_penalty
 
         print("\n--- Starting Evolution ---")
-        old_revenue = old_tc = old_util = 0.0
+        old_obj1 = old_tc = old_obj3 = 0.0
         if valid_objectives:
             means = np.mean(np.array(valid_objectives), axis=0)
-            old_revenue, old_tc, old_util = means.tolist()
+            old_obj1, old_tc, old_obj3 = means.tolist()
         print("51121")
         for gen in trange(n_generations, desc="Evolution", leave=True):
             offspring: List[DecisionIndividual] = []
@@ -535,7 +521,7 @@ class DVG_NSGAIIOptimization:
 
                 if gen > 0:
                     cxpb_tmp, mutpb_p1, mutpb_p2 = local_parameter_tuning(
-                        p1, p2, cxpb, mutpb, old_revenue, old_tc, old_util
+                        p1, p2, cxpb, mutpb, old_obj1, old_tc, old_obj3
                     )
                 else:
                     cxpb_tmp, mutpb_p1, mutpb_p2 = cxpb, mutpb, mutpb
@@ -550,7 +536,7 @@ class DVG_NSGAIIOptimization:
 
                 if gen > 0:
                     _, mutpb_p1, mutpb_p2 = local_parameter_tuning(
-                        c1, c2, cxpb, mutpb, old_revenue, old_tc, old_util
+                        c1, c2, cxpb, mutpb, old_obj1, old_tc, old_obj3
                     )
 
                 if random.random() < mutpb_p1:
@@ -578,12 +564,12 @@ class DVG_NSGAIIOptimization:
             )
 
             record = multi_stats.compile(population) if multi_stats else stats.compile(population)
-            revenues = [ind.original_objectives[0] for ind in population]
+            balances = [ind.original_objectives[0] for ind in population]
             tc_incs = [ind.original_objectives[1] for ind in population]
-            utils = [ind.original_objectives[2] for ind in population]
-            old_revenue = float(np.mean(revenues))
+            continuity = [ind.original_objectives[2] for ind in population]
+            old_obj1 = float(np.mean(balances))
             old_tc = float(np.mean(tc_incs))
-            old_util = float(np.mean(utils))
+            old_obj3 = float(np.mean(continuity))
             logbook.record(gen=gen, evals=len(invalid), **record)
 
         print("\n--- Evolution Finished ---")
