@@ -66,45 +66,45 @@ def plot_pareto_front(
         obj_array = obj_array[outlier_mask]
         valid_inds_for_plot = [ind for idx, ind in enumerate(valid_inds_for_plot) if outlier_mask[idx]]
 
-    net_profit = -obj_array[:, 0]
+    load_balance_penalty = obj_array[:, 0]
     tc_ins = obj_array[:, 1]
-    total_utility = -obj_array[:, 2]
+    continuity_penalty = obj_array[:, 2]
 
     compromise_index = select_best_compromise_solution_3d(obj_array)
-    compromise_x = net_profit[compromise_index]
+    compromise_x = load_balance_penalty[compromise_index]
     compromise_y1 = tc_ins[compromise_index]
-    compromise_y2 = total_utility[compromise_index]
+    compromise_y2 = continuity_penalty[compromise_index]
 
     plt.figure(figsize=(18, 5))
 
     plt.subplot(1, 3, 1)
-    plt.scatter(net_profit, tc_ins, label="Pareto Front", alpha=0.7)
+    plt.scatter(load_balance_penalty, tc_ins, label="Pareto Front", alpha=0.7)
     plt.scatter(compromise_x, compromise_y1, color="red", marker="*", s=150, label="Compromise")
-    plt.xlabel("Net Profit (Higher is Better)")
-    plt.ylabel("Total Insurance Cost (Lower is Better)")
-    plt.title("Profit vs Insurance Cost")
+    plt.xlabel("Load Balance Penalty (Lower)")
+    plt.ylabel("Total Insurance Cost (Lower)")
+    plt.title("Balance vs Insurance Cost")
     plt.legend()
     plt.grid(True)
 
     plt.subplot(1, 3, 2)
-    plt.scatter(net_profit, total_utility, label="Pareto Front", alpha=0.7)
+    plt.scatter(load_balance_penalty, continuity_penalty, label="Pareto Front", alpha=0.7)
     plt.scatter(compromise_x, compromise_y2, color="red", marker="*", s=150, label="Compromise")
-    plt.xlabel("Net Profit (Higher is Better)")
-    plt.ylabel("Total Patient Utility (Higher is Better)")
-    plt.title("Profit vs Patient Utility")
+    plt.xlabel("Load Balance Penalty (Lower)")
+    plt.ylabel("Continuity/Adherence Penalty (Lower)")
+    plt.title("Balance vs Continuity")
     plt.legend()
     plt.grid(True)
 
     plt.subplot(1, 3, 3)
-    plt.scatter(tc_ins, total_utility, label="Pareto Front", alpha=0.7)
+    plt.scatter(tc_ins, continuity_penalty, label="Pareto Front", alpha=0.7)
     plt.scatter(compromise_y1, compromise_y2, color="red", marker="*", s=150, label="Compromise")
-    plt.xlabel("Total Insurance Cost (Lower is Better)")
-    plt.ylabel("Total Patient Utility (Higher is Better)")
-    plt.title("Insurance Cost vs Patient Utility")
+    plt.xlabel("Total Insurance Cost (Lower)")
+    plt.ylabel("Continuity/Adherence Penalty (Lower)")
+    plt.title("Insurance Cost vs Continuity")
     plt.legend()
     plt.grid(True)
 
-    plt.suptitle("Pareto Front Projections (Original Objectives)")
+    plt.suptitle("Pareto Front Projections (New Objectives)")
     output_path = output_dir / filename
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.savefig(output_path, dpi=300)
@@ -115,9 +115,9 @@ def plot_pareto_front(
         csv_path = output_dir / csv_filename
         df = pd.DataFrame(
             {
-                "NetProfit": net_profit,
+                "LoadBalancePenalty": load_balance_penalty,
                 "TC_Insurance": tc_ins,
-                "PatientUtility": total_utility,
+                "ContinuityAdherencePenalty": continuity_penalty,
             }
         )
         df.to_csv(csv_path, index=False)
@@ -156,28 +156,28 @@ def plot_pareto_front_3d_animated(population: Iterable, output_dir: Path, filena
         obj_array = obj_array[outlier_mask]
         valid_inds_for_plot = [ind for idx, ind in enumerate(valid_inds_for_plot) if outlier_mask[idx]]
 
-    net_profit = -obj_array[:, 0]
+    load_balance_penalty = obj_array[:, 0]
     tc_ins = obj_array[:, 1]
-    total_utility = -obj_array[:, 2]
+    continuity_penalty = obj_array[:, 2]
     compromise_index = select_best_compromise_solution_3d(obj_array)
 
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection="3d")
     sc = ax.scatter(
-        net_profit,
+        load_balance_penalty,
         tc_ins,
-        total_utility,
+        continuity_penalty,
         label="Pareto Front",
         alpha=0.7,
         s=40,
-        c=total_utility,
+        c=continuity_penalty,
         cmap="viridis",
     )
 
     ax.scatter(
-        net_profit[compromise_index],
+        load_balance_penalty[compromise_index],
         tc_ins[compromise_index],
-        total_utility[compromise_index],
+        continuity_penalty[compromise_index],
         color="red",
         marker="*",
         s=250,
@@ -185,12 +185,12 @@ def plot_pareto_front_3d_animated(population: Iterable, output_dir: Path, filena
         depthshade=False,
     )
 
-    ax.set_xlabel("Net Profit (Higher)")
+    ax.set_xlabel("Load Balance Penalty (Lower)")
     ax.set_ylabel("Insurance Cost (Lower)")
-    ax.set_zlabel("Patient Utility (Higher)")
-    ax.set_title("3D Pareto Front (Original Objectives)")
+    ax.set_zlabel("Continuity/Adherence Penalty (Lower)")
+    ax.set_title("3D Pareto Front (New Objectives)")
     ax.legend()
-    fig.colorbar(sc, label="Total Patient Utility")
+    fig.colorbar(sc, label="Continuity/Adherence Penalty")
 
     def update(frame):
         ax.view_init(elev=30, azim=frame)

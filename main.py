@@ -38,16 +38,16 @@ def save_pareto_front(population, node_count: int, output_dir: Path) -> None:
     pareto_data = []
     for idx, ind in enumerate(pareto_front_inds):
         if hasattr(ind, "original_objectives") and ind.original_objectives is not None:
-            profit = -ind.original_objectives[0]
+            balance_penalty = ind.original_objectives[0]
             tc_ins = ind.original_objectives[1]
-            utility = -ind.original_objectives[2]
+            continuity_penalty = ind.original_objectives[2]
             transfer_events = getattr(ind, "transfer_events", None)
             pareto_data.append(
                 {
                     "Solution": idx,
-                    "NetProfit": profit,
+                    "LoadBalancePenalty": balance_penalty,
                     "TC_Insurance": tc_ins,
-                    "PatientUtility": utility,
+                    "ContinuityAdherencePenalty": continuity_penalty,
                     "TotalTransfers": transfer_events,
                 }
             )
@@ -76,12 +76,11 @@ def save_mid_records(mid_records: List[List[float]], output_dir: Path, node_coun
         print("No intermediate records to save.")
         return
     columns = [
-        "治疗效果",
-        "等待时间",
-        "转诊距离成本",
-        "治疗费用",
-        "患者体验分",
-        "行政负担",
+        "总等待时间",
+        "累计转诊距离",
+        "跨机构跳转次数",
+        "依从性缺口",
+        "连续性缺口",
     ]
     df = pd.DataFrame(mid_records, columns=columns)
     output_path = output_dir / f"mids_nodes_{node_count}.xlsx"
@@ -119,10 +118,10 @@ def save_objective_matrix(population, output_dir: Path, filename: str = "objs.np
     objectives = []
     for ind in population:
         if hasattr(ind, "original_objectives") and ind.original_objectives is not None:
-            net_profit = -ind.original_objectives[0]
+            load_balance = ind.original_objectives[0]
             tc_ins = ind.original_objectives[1]
-            total_utility = -ind.original_objectives[2]
-            objectives.append([net_profit, tc_ins, total_utility])
+            continuity_penalty = ind.original_objectives[2]
+            objectives.append([load_balance, tc_ins, continuity_penalty])
     if not objectives:
         print("No objective data to save.")
         return

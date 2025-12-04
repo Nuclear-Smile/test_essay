@@ -140,6 +140,38 @@ class ObjectiveEvaluator:
             + self.commu_referral_R()
         )
 
+    def load_balance_penalty(self, alpha_variance: float = 1.0, beta_peak: float = 200.0) -> float:
+        """
+        衡量系统资源利用的平衡性与韧性：
+        - 使用各节点（除转诊中心）接诊量的方差来惩罚过度集中或闲置。
+        - 结合各队列的最大忙碌率，反映高峰拥堵风险。
+        结果越小表示流量分布越均匀、峰值越可控。
+        """
+
+        visits = self.count_visits()
+        node_counts = [
+            visits.get(node, 0)
+            for node in self.system.all_nodes
+            if node != self.system.referral_name
+        ]
+
+        variance_penalty = float(np.var(node_counts)) if len(node_counts) > 1 else 0.0
+
+        self.system.ensure_busy_rates_ready()
+        peak_rho = 0.0
+        for node_name, queue_rates in self.system.busy_rates.items():
+            if node_name == self.system.referral_name:
+                continue
+            for metrics in queue_rates.values():
+                total_doctors = metrics.get("total_doctors", 0)
+                if total_doctors <= 0:
+                    continue
+                busy_doctors = metrics.get("busy_doctors", 0)
+                rho = busy_doctors / total_doctors if total_doctors else 0.0
+                peak_rho = max(peak_rho, rho)
+
+        return alpha_variance * variance_penalty + beta_peak * peak_rho
+
     def TC_hosp_operation(self) -> float:
         self.system.ensure_busy_rates_ready()
         total_operation_cost = 0.0
@@ -312,6 +344,67 @@ class ObjectiveEvaluator:
             ]
         )
         return total_utility
+
+    def continuity_and_adherence_penalty(
+        self,
+        omega_waiting: float = 1.0,
+        omega_distance: float = 0.2,
+        omega_handoff: float = 1.0,
+        omega_adherence_gap: float = 50.0,
+        omega_continuity_gap: float = 10.0,
+    ) -> float:
+        """
+        聚焦患者隐性成本与依从性风险：
+        - 惩罚等待时间、转诊距离与跨机构跳转次数。
+        - 对依从性概率缺口和连续性奖励缺口给予更高权重，鼓励稳健的照护链。
+        返回值越小代表患者体验与依从性维护越好。
+        """
+
+        total_penalty = 0.0
+        total_wait = 0.0
+        total_distance = 0.0
+        total_handoffs = 0.0
+        total_adherence_gap = 0.0
+        total_continuity_gap = 0.0
+        for patient in self.system.all_patients:
+            wait = 0.0
+            if patient.start_service_time is not None:
+                wait = max(0.0, patient.start_service_time - patient.arrival_time)
+            total_wait += wait
+
+            travels = patient.travel_history
+            handoffs = sum(1 for frm, to, _, _ in travels if frm != to)
+            distance = sum(dist for _, _, dist, _ in travels)
+            total_distance += distance
+            total_handoffs += handoffs
+
+            adherence_state = self.system._get_adherence_state(patient)
+            adherence_gap = max(0.0, 1.0 - adherence_state.probability)
+            total_adherence_gap += adherence_gap
+
+            continuity_reward = getattr(patient, "continuity_reward", 0.0)
+            continuity_gap = max(0.0, 1.0 - continuity_reward)
+            total_continuity_gap += continuity_gap
+
+            total_penalty += (
+                omega_waiting * wait
+                + omega_distance * distance
+                + omega_handoff * handoffs
+                + omega_adherence_gap * adherence_gap
+                + omega_continuity_gap * continuity_gap
+            )
+
+        self.mid_records.append(
+            [
+                total_wait,
+                total_distance,
+                total_handoffs,
+                total_adherence_gap,
+                total_continuity_gap,
+            ]
+        )
+
+        return total_penalty
 
     def TC_hosp_operation_per_node(self) -> Dict[str, float]:
         self.system.ensure_busy_rates_ready()
